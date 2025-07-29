@@ -1,14 +1,20 @@
 [
   {
-    "name": "Main Tether Wallet",
-    "address": "F",
+    "name": "ChainLink",
+    "address": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
     "lastBlock": 0,
     "priority": 1
   },
   {
-    "name": "USDC Wallet",
-    "address": "eB48",
+    "name": "Beacon Exchnage",
+    "address": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
     "lastBlock": 0,
     "priority": 2
-  }
+  },
+ {
+    "name": "Binance Exchannge",
+    "address": "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8",
+    "lastBlock": 0,
+    "priority": 2
+  },
 ]
