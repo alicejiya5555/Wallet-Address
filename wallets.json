@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Main Tether Wallet",
+    "address": "0x5f64D5710A58AF5688054b026C562Ec8136A875F",
+    "lastBlock": 0,
+    "priority": 1
+  },
+  {
+    "name": "USDC Wallet",
+    "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "lastBlock": 0,
+    "priority": 2
+  }
+]
