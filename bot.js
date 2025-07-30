@@ -33,6 +33,7 @@ function formatAmount(value, decimals = 18) {
 
 // 🏷️ Format address short
 function shortAddress(addr) {
+  if (!addr || typeof addr !== 'string') return 'N/A';
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
@@ -62,11 +63,14 @@ async function checkTransactions() {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
 
-        // ⏳ Skip if older than 5 mins
         if (block <= fromBlock || txTime < timeWindow) continue;
 
-        const isDeposit = tx.to?.toLowerCase() === address;
-        const isWithdrawal = tx.from?.toLowerCase() === address;
+        const to = tx.to?.toLowerCase();
+        const from = tx.from?.toLowerCase();
+        if (!to || !from) continue;
+
+        const isDeposit = to === address;
+        const isWithdrawal = from === address;
 
         if (!isDeposit && !isWithdrawal) continue;
 
@@ -103,11 +107,14 @@ ${alertType}
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
 
-        // ⏳ Skip if older than 5 mins
         if (block <= fromBlock || txTime < timeWindow) continue;
 
-        const isDeposit = tx.to?.toLowerCase() === address;
-        const isWithdrawal = tx.from?.toLowerCase() === address;
+        const to = tx.to?.toLowerCase();
+        const from = tx.from?.toLowerCase();
+        if (!to || !from) continue;
+
+        const isDeposit = to === address;
+        const isWithdrawal = from === address;
 
         const symbol = tx.tokenSymbol || 'Unknown';
         const decimals = tx.tokenDecimal ? parseInt(tx.tokenDecimal) : 18;
