@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour polling
+const CHECK_INTERVAL = 60 * 1000; // 1 minute polling
 
 const wallets = [
   { name: 'Felix Colombia', address: '0x705A46DdB89F0B6F0c6348b4aF40192778bC0C87' },
@@ -22,20 +22,23 @@ const wallets = [
 let isBotActive = true;
 let lastBlocks = {}; // track highest block per wallet
 
+// Format token amount gracefully
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
+// Shorten Ethereum address for elegant display
 function shortAddress(addr) {
   if (!addr || typeof addr !== 'string') return 'N/A';
   return addr.slice(0, 6) + '...' + addr.slice(-4);
 }
 
+// Cache token prices during one check cycle to avoid many API calls
 let priceCache = {};
 
 async function getTokenPrice(symbol) {
   if (priceCache[symbol]) return priceCache[symbol];
-
+  
   try {
     const coinIds = {
       'USDT': 'tether',
@@ -56,6 +59,7 @@ async function getTokenPrice(symbol) {
   }
 }
 
+// Get ETH balance for a wallet
 async function getETHBalance(address) {
   const url = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
   try {
@@ -66,6 +70,7 @@ async function getETHBalance(address) {
   }
 }
 
+// Get ERC-20 token balance for a wallet
 async function getERC20TokenBalance(address, contract, decimals) {
   const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${contract}&address=${address}&tag=latest&apikey=${API_KEY}`;
   try {
@@ -76,6 +81,7 @@ async function getERC20TokenBalance(address, contract, decimals) {
   }
 }
 
+// Popular token contracts to check balances for
 const tokenContracts = [
   { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
   { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
@@ -83,36 +89,26 @@ const tokenContracts = [
   { symbol: 'BNB', address: '0xB8c77482e45F1F44dE1745F52C74426C631bDD52', decimals: 18 }
 ];
 
+// Compose wallet balances message for clarity
 async function composeBalancesMessage(address, name) {
   const ethBalance = await getETHBalance(address);
-  let balances = `📊 *${name}'s Total Wallet Balances:*\n`;
-
-  const ethFloat = parseFloat(ethBalance);
-  if (ethFloat > 0) {
-    balances += `\n- 🌐 ETH: *${ethFloat.toFixed(6)} ETH*`;
-  }
+  let balances = `📊 *${name}'s Total Wallet Balances:*\n\n- 🌐 ETH: *${ethBalance} ETH*`;
 
   for (const token of tokenContracts) {
     const bal = await getERC20TokenBalance(address, token.address, token.decimals);
-    const floatBal = parseFloat(bal);
-    if (floatBal > 0) {
-      balances += `\n- 💠 ${token.symbol}: *${floatBal.toFixed(6)}*`;
-    }
-  }
-
-  if (balances.trim() === `📊 *${name}'s Total Wallet Balances:*`) {
-    balances += '\n- _No token balances_';
+    balances += `\n- 💠 ${token.symbol}: *${bal}*`;
   }
 
   return balances;
 }
 
+// Fetch latest Ethereum block number to initialize tracking
 async function getLatestBlockNumber() {
   try {
     const url = `https://api.etherscan.io/api?module=proxy&action=eth_blockNumber&apikey=${API_KEY}`;
     const res = await axios.get(url);
     if (res.data.result) {
-      return parseInt(res.data.result, 16);
+      return parseInt(res.data.result, 16); // hex to decimal
     }
   } catch (e) {
     console.error('❌ Error fetching latest block number:', e.message);
@@ -120,6 +116,7 @@ async function getLatestBlockNumber() {
   return 0;
 }
 
+// Initialize lastBlocks for each wallet at startup
 async function initializeLastBlocks() {
   const latestBlock = await getLatestBlockNumber();
   wallets.forEach(wallet => {
@@ -128,12 +125,12 @@ async function initializeLastBlocks() {
   console.log(`Initialized lastBlocks to block number: ${latestBlock}`);
 }
 
+// Main transaction checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
-  priceCache = {}; // reset price cache each cycle
-  const now = Math.floor(Date.now() / 1000);
-  const oneHourAgo = now - 3600;
+  priceCache = {}; // Reset price cache each cycle
+  const now = Math.floor(Date.now() / 1000); // Current Unix timestamp in seconds
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
@@ -151,9 +148,8 @@ async function checkTransactions() {
       for (const tx of ethTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
-
         if (block <= fromBlock) continue;
-        if (txTime < oneHourAgo) continue; // Skip transactions older than 1 hour
+        if (now - txTime > 60) continue;  // Show only very recent tx
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -174,6 +170,7 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
+🕐 ${new Date(txTime * 1000).toLocaleString()}
 
 ${balancesMessage}
         `;
@@ -195,9 +192,8 @@ ${balancesMessage}
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
-
         if (block <= fromBlock) continue;
-        if (txTime < oneHourAgo) continue; // Skip transactions older than 1 hour
+        if (now - txTime > 60) continue;  // Show only very recent tx
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -221,6 +217,7 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
+🕐 ${new Date(txTime * 1000).toLocaleString()}
 
 ${balancesMessage}
         `;
@@ -233,17 +230,20 @@ ${balancesMessage}
       console.error(`❌ Token Error [${name}]:`, err.message);
     }
 
+    // Update last processed block for the wallet
     if (maxBlockInThisCycle > fromBlock) {
       lastBlocks[address] = maxBlockInThisCycle;
     }
   }
 }
 
+// Initialize and start bot monitoring
 initializeLastBlocks().then(() => {
   setInterval(checkTransactions, CHECK_INTERVAL);
   console.log('⏳ Transaction monitoring started...');
 });
 
+// Telegram commands to control the bot
 bot.command('start', ctx => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
@@ -253,14 +253,7 @@ bot.command('stop', ctx => {
   ctx.reply('⏸️ Bot monitoring paused.');
 });
 
-bot.command('check', async (ctx) => {
-  ctx.reply('🔍 Checking all wallet balances...');
-  for (const wallet of wallets) {
-    const message = await composeBalancesMessage(wallet.address, wallet.name);
-    await ctx.replyWithMarkdown(message);
-  }
-});
-
+// Express health check endpoint
 app.get('/', (_req, res) => {
   res.send('🤖 Wallet Monitor is Alive');
 });
@@ -269,6 +262,7 @@ app.listen(PORT, () => {
   console.log(`🌐 Server listening on port ${PORT}`);
 });
 
+// Launch the Telegram bot
 bot.launch({ dropPendingUpdates: true })
   .then(() => console.log('🤖 Bot started via polling.'))
   .catch(err => console.error('🚨 Launch error:', err.message));
