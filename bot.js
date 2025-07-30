@@ -1,16 +1,18 @@
 // 🔌 Load env variables
 require('dotenv').config();
 
-// 🌐 Express setup
-const express = require('express');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// 📦 Core
 const axios = require('axios');
 const { Telegraf } = require('telegraf');
+const express = require('express');
+const app = express();
 
-// Wallets to monitor
+const PORT = process.env.PORT || 3000;
+
+const bot = new Telegraf(process.env.BOT_TOKEN);
+const API_KEY = process.env.ETHERSCAN_API;
+const CHECK_INTERVAL = 60 * 1000; // 1 minute
+const TIME_WINDOW = 60; // 1 minute in seconds
+
 const wallets = [
   { name: 'Check Tether', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' },
   { name: 'Own ERC', address: '0xbDCcF65a7b2a4b19601d097457c329064C1f5704' },
@@ -19,27 +21,18 @@ const wallets = [
   { name: 'ChainLink-2', address: '0x20145C5e27408B5C1CF2239d0115EE3BBc27CbD7' },
 ];
 
-// Constants and instances
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 1000; // 1 minute
-const TIME_WINDOW = 60; // 1 minute in seconds
-
 let isBotActive = true;
 let lastBlocks = {};
 
-// Format amount with decimals
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
-// Shorten address display
 function shortAddress(addr) {
   if (!addr || typeof addr !== 'string') return 'N/A';
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
-// Main transaction check function
 async function checkTransactions() {
   if (!isBotActive) return;
 
@@ -51,8 +44,8 @@ async function checkTransactions() {
     const name = wallet.name;
     const fromBlock = lastBlocks[address] || 0;
 
-    // ETH transactions
     try {
+      // ETH txs
       const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const ethRes = await axios.get(ethUrl);
       const ethTxs = ethRes.data.result || [];
@@ -65,12 +58,10 @@ async function checkTransactions() {
 
         const to = tx.to?.toLowerCase();
         const from = tx.from?.toLowerCase();
-
         if (!to || !from) continue;
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
-
         if (!isDeposit && !isWithdrawal) continue;
 
         const value = formatAmount(tx.value, 18);
@@ -94,8 +85,8 @@ ${alertType}
       console.error('❌ ETH Error:', err.message);
     }
 
-    // ERC-20 token transactions (includes USDT, Chainlink, and others)
     try {
+      // ERC-20 txs
       const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const tokenRes = await axios.get(tokenUrl);
       const tokenTxs = tokenRes.data.result || [];
@@ -108,22 +99,17 @@ ${alertType}
 
         const to = tx.to?.toLowerCase();
         const from = tx.from?.toLowerCase();
-
         if (!to || !from) continue;
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
-
-        // Identify swap by neither sending nor receiving the wallet address directly
-        const isSwap = !isDeposit && !isWithdrawal;
+        if (!isDeposit && !isWithdrawal) continue;
 
         const symbol = tx.tokenSymbol || 'Unknown';
         const decimals = tx.tokenDecimal ? parseInt(tx.tokenDecimal) : 18;
         const value = formatAmount(tx.value, decimals);
 
-        let alertType = '🟡 Token Swap';
-        if (isWithdrawal) alertType = `🔴 Withdraw ${symbol}`;
-        else if (isDeposit) alertType = `🟢 Deposit ${symbol}`;
+        const alertType = isWithdrawal ? `🔴 Withdraw ${symbol}` : `🟢 Deposit ${symbol}`;
 
         const message = `
 ${alertType}
@@ -145,7 +131,7 @@ ${alertType}
   }
 }
 
-// Telegram bot commands
+// Telegram commands
 bot.command('start', ctx => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
@@ -156,23 +142,19 @@ bot.command('stop', ctx => {
   ctx.reply('⏸️ Bot monitoring paused.');
 });
 
-// Express health check endpoint
+// Express health check
 app.get('/', (_req, res) => {
   res.send('🤖 Ethereum & ERC-20 Monitor Bot is Alive!');
 });
 
-// Telegram webhook setup
-const webhookPath = `/bot${process.env.BOT_TOKEN}`;
-app.use(bot.webhookCallback(webhookPath));
-
-// Start Express server
+// Start server
 app.listen(PORT, () => {
   console.log(`🌐 Server running on port ${PORT}`);
-  console.log(`🌐 Webhook path: ${webhookPath}`);
 });
 
-// Start periodic transaction checking every 1 minute
-setInterval(checkTransactions, CHECK_INTERVAL);
+// Start polling
+bot.launch();
+console.log('🤖 Bot started with polling... watching transactions...');
 
-// No polling in webhook mode
-console.log('🤖 Bot started in webhook mode, watching transactions...');
+// Start interval checking
+setInterval(checkTransactions, CHECK_INTERVAL);
