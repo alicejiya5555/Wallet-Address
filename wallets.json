@@ -1,14 +1,10 @@
 [
   {
-    "name": "ChainLink",
-    "address": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
-    "lastBlock": 0,
-    "priority": 1
+    "name": "chainlink",
+    "address": "0x514910771AF9Ca656af840dff83E8264EcF986CA"
   },
- {
-    "name": "Binance Exchannge",
-    "address": "#",
-    "lastBlock": 0,
-    "priority": 2
+  {
+    "name": "new token name",
+    "address": "new token address here"
   }
 ]
