@@ -1,0 +1,20 @@
+{
+  "name": "eth-erc20-monitor-bot",
+  "version": "1.0.0",
+  "description": "Ethereum and ERC-20 transaction monitor bot with Telegram alerts",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "telegraf": "^4.12.2"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "Ronaldo",
+  "license": "ISC"
+}
