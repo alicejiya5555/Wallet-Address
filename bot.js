@@ -253,6 +253,15 @@ bot.command('stop', ctx => {
   ctx.reply('⏸️ Bot monitoring paused.');
 });
 
+// 🆕 /check command — shows all wallet balances
+bot.command('check', async (ctx) => {
+  ctx.reply('🔍 Checking all wallet balances...');
+  for (const wallet of wallets) {
+    const message = await composeBalancesMessage(wallet.address, wallet.name);
+    await ctx.replyWithMarkdown(message);
+  }
+});
+
 // Express health check endpoint
 app.get('/', (_req, res) => {
   res.send('🤖 Wallet Monitor is Alive');
