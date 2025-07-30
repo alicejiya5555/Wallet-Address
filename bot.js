@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 1000; // 1 minute polling
+const CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour polling
 
 const wallets = [
   { name: 'Felix Colombia', address: '0x705A46DdB89F0B6F0c6348b4aF40192778bC0C87' },
@@ -131,7 +131,8 @@ async function initializeLastBlocks() {
 async function checkTransactions() {
   if (!isBotActive) return;
 
-  priceCache = {}; // Reset price cache each cycle
+  priceCache = {}; // reset price cache each cycle
+  const now = Math.floor(Date.now() / 1000);
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
@@ -169,7 +170,6 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 ${new Date(parseInt(tx.timeStamp) * 1000).toLocaleString()}
 
 ${balancesMessage}
         `;
@@ -214,7 +214,6 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 ${new Date(parseInt(tx.timeStamp) * 1000).toLocaleString()}
 
 ${balancesMessage}
         `;
@@ -242,7 +241,6 @@ bot.command('start', ctx => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
 });
-
 bot.command('stop', ctx => {
   isBotActive = false;
   ctx.reply('⏸️ Bot monitoring paused.');
