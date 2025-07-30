@@ -26,7 +26,7 @@ const wallets = require('./wallets.json');
 let isBotActive = true;
 let lastBlocks = {};
 
-// Format ETH or token values
+// Format token values
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
@@ -36,6 +36,7 @@ function shortAddress(addr) {
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
+// Main transaction check logic (ERC-20 only)
 async function checkTransactions() {
   if (!isBotActive) return;
 
@@ -44,23 +45,19 @@ async function checkTransactions() {
     const name = wallet.name;
     const fromBlock = lastBlocks[address] || 0;
 
-    // ETH Transactions
-    const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
     const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
 
     try {
-      const [ethRes, tokenRes] = await Promise.all([axios.get(ethUrl), axios.get(tokenUrl)]);
+      const tokenRes = await axios.get(tokenUrl);
+      const tokenTxs = tokenRes.data.result;
 
-      const allTxs = [...ethRes.data.result, ...tokenRes.data.result];
-      allTxs.sort((a, b) => parseInt(a.blockNumber) - parseInt(b.blockNumber));
-
-      for (const tx of allTxs) {
+      for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
         if (block <= fromBlock) continue;
 
         const isDeposit = tx.to.toLowerCase() === address;
         const isWithdrawal = tx.from.toLowerCase() === address;
-        const token = tx.tokenSymbol || 'ETH';
+        const symbol = tx.tokenSymbol || 'Unknown';
         const value = formatAmount(tx.value, tx.tokenDecimal || 18);
 
         let alertType = '🟢 Deposit';
@@ -68,10 +65,10 @@ async function checkTransactions() {
         if (!isWithdrawal && !isDeposit) alertType = '🟡 Transfer';
 
         const message = `
-${alertType} ${token}
+${alertType} ${symbol}
 
 👤 Wallet: *${name}*
-💰 Amount: *${value} ${token}*
+💰 Amount: *${value} ${symbol}*
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 Hash: [View TX](https://etherscan.io/tx/${tx.hash})
@@ -82,7 +79,7 @@ ${alertType} ${token}
         lastBlocks[address] = block;
       }
     } catch (error) {
-      console.error('Failed to fetch transactions:', error);
+      console.error('Failed to fetch token transactions:', error);
     }
   }
 }
