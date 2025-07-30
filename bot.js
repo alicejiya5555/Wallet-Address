@@ -26,19 +26,22 @@ const wallets = require('./wallets.json');
 let isBotActive = true;
 let lastBlocks = {};
 
-// Format token values
+// 📐 Format token values
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
-// Format address
+// 🏷️ Format short wallet address
 function shortAddress(addr) {
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
-// Main transaction check logic (ERC-20 only)
+// 🔍 Check ERC-20 transactions from last 24 hours
 async function checkTransactions() {
   if (!isBotActive) return;
+
+  const now = Math.floor(Date.now() / 1000);
+  const oneDayAgo = now - 86400;
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
@@ -53,7 +56,8 @@ async function checkTransactions() {
 
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
-        if (block <= fromBlock) continue;
+        const txTime = parseInt(tx.timeStamp);
+        if (block <= fromBlock || txTime < oneDayAgo) continue;
 
         const isDeposit = tx.to.toLowerCase() === address;
         const isWithdrawal = tx.from.toLowerCase() === address;
@@ -79,15 +83,15 @@ ${alertType} ${symbol}
         lastBlocks[address] = block;
       }
     } catch (error) {
-      console.error('Failed to fetch token transactions:', error);
+      console.error('❌ Failed to fetch token transactions:', error.message);
     }
   }
 }
 
-// ⏱️ Repeatedly check
+// ⏱️ Run every X seconds
 setInterval(checkTransactions, CHECK_INTERVAL);
 
-// 🛠️ Telegram bot commands
+// 🛠️ Bot commands
 bot.command('start', (ctx) => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
