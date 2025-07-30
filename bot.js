@@ -14,17 +14,19 @@ app.listen(PORT, () => {
   console.log(`🌐 Server is running on port ${PORT}`);
 });
 
-require('dotenv').config();
+// 📦 Load required modules
 const axios = require('axios');
 const { Telegraf } = require('telegraf');
 const fs = require('fs');
 
+// 🤖 Telegram bot setup
 const bot = new Telegraf(process.env.BOT_TOKEN);
-
 let isBotActive = true;
 
+// 🧾 Load wallets
 const wallets = require('./wallets.json');
 
+// 🔑 Etherscan setup
 const API_KEY = process.env.ETHERSCAN_API;
 const CHECK_INTERVAL = 60 * 1000; // 1 min
 
