@@ -16,7 +16,8 @@ const TIME_WINDOW = 60 * 60; // 1 hour
 const wallets = [
   { name: 'Own ERC', address: '0xbDCcF65a7b2a4b19601d097457c329064C1f5704' },
   { name: 'Ivan Colombia', address: '0x857c67C421d3E94daC5aBB0EaA4d34b26722B4fB' },
-  { name: 'ChainLink-2', address: '0x20145C5e27408B5C1CF2239d0115EE3BBc27CbD7' }
+  { name: 'ChainLink-2', address: '0x20145C5e27408B5C1CF2239d0115EE3BBc27CbD7' },
+  { name: 'Tether', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' }
 ];
 
 let isBotActive = true;
