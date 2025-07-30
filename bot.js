@@ -45,16 +45,13 @@ async function getTokenPrice(symbol) {
   if (priceCache[symbol]) return priceCache[symbol];
   
   try {
-    // Map common token symbols to CoinGecko IDs
     const coinIds = {
       'USDT': 'tether',
       'USDC': 'usd-coin',
       'LINK': 'chainlink',
       'BNB': 'binancecoin',
       'ETH': 'ethereum'
-      // Add more if needed
     };
-
     const coinId = coinIds[symbol.toUpperCase()];
     if (!coinId) return 0;
 
@@ -97,6 +94,19 @@ const tokenContracts = [
   { symbol: 'BNB', address: '0xB8c77482e45F1F44dE1745F52C74426C631bDD52', decimals: 18 }
 ];
 
+// Compose wallet balances message
+async function composeBalancesMessage(address, name) {
+  const ethBalance = await getETHBalance(address);
+  let balances = `📊 *${name}'s Total Wallet Balances:*\n\n- 🌐 ETH: *${ethBalance} ETH*`;
+
+  for (const token of tokenContracts) {
+    const bal = await getERC20TokenBalance(address, token.address, token.decimals);
+    balances += `\n- 💠 ${token.symbol}: *${bal}*`;
+  }
+
+  return balances;
+}
+
 // Main function to check new transactions
 async function checkTransactions() {
   if (!isBotActive) return;
@@ -110,7 +120,7 @@ async function checkTransactions() {
     let fromBlock = lastBlocks[address] || 0;
 
     try {
-      // Fetch ETH txs from last checked block
+      // Fetch ETH transactions
       const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const ethRes = await axios.get(ethUrl);
       const ethTxs = ethRes.data.result || [];
@@ -119,9 +129,7 @@ async function checkTransactions() {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
         if (block <= fromBlock) continue;
-
-        // Skip if transaction older than 60 seconds
-        if (now - txTime > 60) continue;
+        if (now - txTime > 60) continue;  // Only within last 60 seconds
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -132,6 +140,8 @@ async function checkTransactions() {
         const price = await getTokenPrice('ETH');
         const usdValue = (value * price).toFixed(2);
 
+        const balancesMessage = await composeBalancesMessage(address, name);
+
         const message = `
 ${alertType}
 
@@ -141,6 +151,8 @@ ${alertType}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
 🕐 ${new Date(txTime * 1000).toLocaleString()}
+
+${balancesMessage}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
@@ -151,7 +163,7 @@ ${alertType}
     }
 
     try {
-      // Fetch ERC20 token txs
+      // Fetch ERC20 token transactions
       const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const tokenRes = await axios.get(tokenUrl);
       const tokenTxs = tokenRes.data.result || [];
@@ -160,9 +172,7 @@ ${alertType}
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
         if (block <= fromBlock) continue;
-
-        // Skip if transaction older than 60 seconds
-        if (now - txTime > 60) continue;
+        if (now - txTime > 60) continue;  // Only within last 60 seconds
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -176,6 +186,8 @@ ${alertType}
         const price = await getTokenPrice(symbol);
         const usdValue = (value * price).toFixed(2);
 
+        const balancesMessage = await composeBalancesMessage(address, name);
+
         const message = `
 ${alertType}
 
@@ -185,6 +197,8 @@ ${alertType}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
 🕐 ${new Date(txTime * 1000).toLocaleString()}
+
+${balancesMessage}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
@@ -192,21 +206,6 @@ ${alertType}
       }
     } catch (err) {
       console.error(`❌ Token Error [${name}]:`, err.message);
-    }
-
-    // At the end, show wallet balances
-    try {
-      const ethBalance = await getETHBalance(address);
-      let balances = `📊 *${name}'s Total Wallet Balances:*\n\n- 🌐 ETH: *${ethBalance} ETH*`;
-
-      for (const token of tokenContracts) {
-        const bal = await getERC20TokenBalance(address, token.address, token.decimals);
-        balances += `\n- 💠 ${token.symbol}: *${bal}*`;
-      }
-
-      await bot.telegram.sendMessage(process.env.CHAT_ID, balances, { parse_mode: 'Markdown' });
-    } catch (e) {
-      console.error(`❌ Balance Fetch Error [${name}]:`, e.message);
     }
   }
 }
