@@ -1,18 +1,15 @@
 {
-  "name": "eth-erc20-monitor-bot",
+  "name": "eth-wallet-monitor-bot",
   "version": "1.0.0",
-  "description": "Ethereum and ERC-20 transaction monitor bot",
+  "description": "Ethereum and ERC-20 wallet monitoring Telegram bot",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "axios": "^1.4.0",
+    "axios": "^1.6.8",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "telegraf": "^4.12.2"
-  },
-  "engines": {
-    "node": ">=18"
+    "express": "^4.19.2",
+    "telegraf": "^4.16.2"
   }
 }
