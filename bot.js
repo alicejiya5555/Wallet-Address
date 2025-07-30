@@ -16,7 +16,7 @@ const wallets = [
   { name: 'Felix Colombia', address: '0x705A46DdB89F0B6F0c6348b4aF40192778bC0C87' },
   { name: 'Daniel', address: '0x5218177BC361DEA6fE7654C8Ac25D4f7424Aa993' },
   { name: 'Ivan', address: '0x857c67C421d3E94daC5aBB0EaA4d34b26722B4fB' },
-  { name: 'Chainlink', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' }
+  { name: 'Chainlink', address: '0x514910771AF9Ca656af840dff83E8264EcF986CA' }
 ];
 
 let isBotActive = true;
@@ -251,15 +251,6 @@ bot.command('start', ctx => {
 bot.command('stop', ctx => {
   isBotActive = false;
   ctx.reply('⏸️ Bot monitoring paused.');
-});
-
-// 🆕 /check command — shows all wallet balances
-bot.command('check', async (ctx) => {
-  ctx.reply('🔍 Checking all wallet balances...');
-  for (const wallet of wallets) {
-    const message = await composeBalancesMessage(wallet.address, wallet.name);
-    await ctx.replyWithMarkdown(message);
-  }
 });
 
 // Express health check endpoint
