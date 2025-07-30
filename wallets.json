@@ -4,6 +4,10 @@
     "address": "0x5218177BC361DEA6fE7654C8Ac25D4f7424Aa993"
   },
   {
+    "name": "ERC-20",
+    "address": "0xbDCcF65a7b2a4b19601d097457c329064C1f5704"
+  }
+ {
     "name": "new token name",
     "address": "new token address here"
   }
