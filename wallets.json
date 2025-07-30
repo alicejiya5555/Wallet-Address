@@ -1,7 +1,7 @@
 [
   {
-    "name": "Daniel Brazil",
-    "address": "0x5218177BC361DEA6fE7654C8Ac25D4f7424Aa993"
+    "name": "Tether Main",
+    "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7"
   },
   {
     "name": "ERC-20",
@@ -25,6 +25,6 @@
   },
   {
     "name": "Tether Wallet",
-    "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+    "address": "#"
   }
 ]
