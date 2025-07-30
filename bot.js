@@ -37,14 +37,14 @@ function shortAddress(addr) {
 }
 
 // ⏱️ Time window: 5 minutes
-const FIVE_MINUTES = 5 * 60;
+const ONE_MINUTE = 1 * 60;
 
 // 🔍 Main ERC-20 Transaction Checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
   const now = Math.floor(Date.now() / 1000);
-  const timeWindow = now - FIVE_MINUTES;
+  const timeWindow = now - ONE_MINUTE;
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
