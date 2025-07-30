@@ -21,7 +21,8 @@ const wallets = require('./wallets.json');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 1000; // every 1 min
+const CHECK_INTERVAL = 60 * 60 * 1000; // ⏱️ Every 1 hour
+const TIME_WINDOW = 60 * 60; // ⏳ Scan last 1 hour
 
 let isBotActive = true;
 let lastBlocks = {};
@@ -37,20 +38,19 @@ function shortAddress(addr) {
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
-// ⏱️ Time window
-const ONE_MINUTE = 1 * 60;
-
 // 🔍 Main Checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
   const now = Math.floor(Date.now() / 1000);
-  const timeWindow = now - ONE_MINUTE;
+  const timeWindow = now - TIME_WINDOW;
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
     const name = wallet.name;
     const fromBlock = lastBlocks[address] || 0;
+
+    console.log(`🔍 Checking ${name}: ${address}`);
 
     // 📥 ETH transactions
     const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
@@ -153,4 +153,4 @@ bot.command('stop', (ctx) => {
 });
 
 bot.launch();
-console.log('🤖 Bot started and watching wallet movements...');
+console.log('🤖 Bot started and watching wallet movements every hour...');
