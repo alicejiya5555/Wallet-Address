@@ -1,107 +1,114 @@
 require('dotenv').config();
-const fs = require('fs');
 const axios = require('axios');
 const { Telegraf } = require('telegraf');
+const fs = require('fs');
 
-// Load wallet list from file
-const WALLETS = JSON.parse(fs.readFileSync('./wallets.json', 'utf8'));
-
-// Load environment variables
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
-const TELEGRAM_CHAT_ID = process.env.CHAT_ID;
+
+let isBotActive = true;
+
+const wallets = require('./wallets.json');
+
+const API_KEY = process.env.ETHERSCAN_API;
+const CHECK_INTERVAL = 60 * 1000; // 1 min
+
+let lastBlocks = {};
 
 async function fetchTransactions(address, fromBlock, type = 'eth') {
   const module = type === 'eth' ? 'txlist' : 'tokentx';
-  const url = `https://api.etherscan.io/api?module=account&action=${module}&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${ETHERSCAN_API_KEY}`;
+  const url = `https://api.etherscan.io/api?module=account&action=${module}&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
   try {
-    const { data } = await axios.get(url);
-    return data.status === '1' ? data.result : [];
+    const res = await axios.get(url);
+    return res.data.status === '1' ? res.data.result : [];
   } catch (err) {
-    console.error(`Failed fetching ${type} for ${address}`, err);
+    console.error(`Error fetching ${type} txs for ${address}:`, err.message);
     return [];
   }
 }
 
-function getStatusIcon(isDeposit, isSwap) {
-  if (isSwap) return '🟡';
-  return isDeposit ? '🟢' : '🔴';
-}
-
 function formatTxMessage({ wallet, txHash, asset, amount, from, to, timestamp, isDeposit, isSwap }) {
-  const icon = getStatusIcon(isDeposit, isSwap);
-  return `
-${icon} *${isDeposit ? 'DEPOSIT' : isSwap ? 'SWAP' : 'WITHDRAWAL'}*
-
-*Wallet*: ${wallet}
-*Token*: ${asset}
-*Amount*: ${amount.toFixed(4)}
-*From*: \`${from}\`
-*To*: \`${to}\`
-*Time*: ${new Date(parseInt(timestamp) * 1000).toLocaleString()}
-[🔗 View Tx](https://etherscan.io/tx/${txHash})
-`;
+  const direction = isSwap ? '🟡 SWAP' : isDeposit ? '🟢 DEPOSIT' : '🔴 WITHDRAW';
+  const short = (addr) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  const time = new Date(parseInt(timestamp) * 1000).toLocaleString();
+  return `${direction} ALERT\n\n*Wallet*: ${wallet}\n*Amount*: ${amount.toFixed(4)} ${asset}\n*From*: ${short(from)}\n*To*: ${short(to)}\n*Time*: ${time}\n[View on Etherscan](https://etherscan.io/tx/${txHash})`;
 }
 
-async function sendTelegramMessage(text) {
-  await bot.telegram.sendMessage(TELEGRAM_CHAT_ID, text, {
-    parse_mode: 'Markdown',
-    disable_web_page_preview: true
-  });
-}
+async function checkWallets() {
+  if (!isBotActive) return;
 
-async function monitorWallet(wallet) {
-  const ethTxs = await fetchTransactions(wallet.address, wallet.lastBlock, 'eth');
-  const tokenTxs = await fetchTransactions(wallet.address, wallet.lastBlock, 'token');
-  let highestBlock = wallet.lastBlock;
+  for (const wallet of wallets) {
+    const addr = wallet.address.toLowerCase();
+    const name = wallet.name;
+    const lastBlock = lastBlocks[addr] || 0;
 
-  for (const tx of [...ethTxs, ...tokenTxs]) {
-    const isDeposit = tx.to.toLowerCase() === wallet.address.toLowerCase();
-    const isSwap = tx.from.toLowerCase() === tx.to.toLowerCase();
-    const amount = parseFloat(tx.value) / Math.pow(10, parseInt(tx.tokenDecimal || 18));
-    const asset = tx.tokenSymbol || 'ETH';
-    const blockNum = parseInt(tx.blockNumber);
-    if (blockNum > highestBlock) highestBlock = blockNum;
+    const ethTxs = await fetchTransactions(addr, lastBlock, 'eth');
+    const tokenTxs = await fetchTransactions(addr, lastBlock, 'token');
+    let highestBlock = lastBlock;
 
-    const message = formatTxMessage({
-      wallet: wallet.name,
-      txHash: tx.hash,
-      asset,
-      amount,
-      from: tx.from,
-      to: tx.to,
-      timestamp: tx.timeStamp,
-      isDeposit,
-      isSwap
-    });
+    for (const tx of ethTxs) {
+      const blockNum = parseInt(tx.blockNumber);
+      if (blockNum > highestBlock) highestBlock = blockNum;
+      const isDeposit = tx.to.toLowerCase() === addr;
+      const amount = parseFloat(tx.value) / 1e18;
+      const message = formatTxMessage({
+        wallet: name,
+        txHash: tx.hash,
+        asset: 'ETH',
+        amount,
+        from: tx.from,
+        to: tx.to,
+        timestamp: tx.timeStamp,
+        isDeposit,
+        isSwap: false
+      });
+      await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
+    }
 
-    await sendTelegramMessage(message);
+    for (const tx of tokenTxs) {
+      const blockNum = parseInt(tx.blockNumber);
+      if (blockNum > highestBlock) highestBlock = blockNum;
+      const isDeposit = tx.to.toLowerCase() === addr;
+      const decimals = parseInt(tx.tokenDecimal) || 18;
+      const amount = parseFloat(tx.value) / Math.pow(10, decimals);
+      const asset = tx.tokenSymbol || 'UNKNOWN';
+      const message = formatTxMessage({
+        wallet: name,
+        txHash: tx.hash,
+        asset,
+        amount,
+        from: tx.from,
+        to: tx.to,
+        timestamp: tx.timeStamp,
+        isDeposit,
+        isSwap: tx.from.toLowerCase() === tx.to.toLowerCase()
+      });
+      await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
+    }
+
+    lastBlocks[addr] = highestBlock;
   }
-
-  wallet.lastBlock = highestBlock;
 }
 
-async function checkAllWallets() {
-  for (const wallet of WALLETS) {
-    await monitorWallet(wallet);
-  }
-  console.log('✅ Wallet check completed.');
-}
-
-bot.start(async (ctx) => {
-  await ctx.reply('🔍 Checking wallets for new transactions...');
-  await checkAllWallets();
+bot.command('start', (ctx) => {
+  isBotActive = true;
+  ctx.reply('✅ Bot has been activated and will start monitoring transactions.');
 });
 
-bot.command('help', async (ctx) => {
-  await ctx.reply('🤖 Bot is active.\nUse /start to manually trigger a check.');
+bot.command('stop', (ctx) => {
+  isBotActive = false;
+  ctx.reply('⏸️ Bot has been paused and will stop monitoring transactions.');
 });
 
-(async () => {
-  console.log('🤖 Bot is running...');
-  await checkAllWallets();
-  bot.launch();
-})();
+bot.command('help', (ctx) => {
+  ctx.reply(`🤖 Commands:
+/start - Start monitoring
+/stop - Stop monitoring
+/help - Show commands`);
+});
+
+setInterval(checkWallets, CHECK_INTERVAL);
+
+bot.launch().then(() => console.log('Bot started. Monitoring wallets...'));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
