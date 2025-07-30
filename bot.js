@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL =60 * 60 * 1000 // equals 3,600,000 ms → 1 hour
+const CHECK_INTERVAL = 60 * 1000; // 1 minute polling
 
 const wallets = [
   { name: 'Felix Colombia', address: '0x705A46DdB89F0B6F0c6348b4aF40192778bC0C87' },
@@ -251,6 +251,15 @@ bot.command('start', ctx => {
 bot.command('stop', ctx => {
   isBotActive = false;
   ctx.reply('⏸️ Bot monitoring paused.');
+});
+
+// 🆕 /check command — shows all wallet balances
+bot.command('check', async (ctx) => {
+  ctx.reply('🔍 Checking all wallet balances...');
+  for (const wallet of wallets) {
+    const message = await composeBalancesMessage(wallet.address, wallet.name);
+    await ctx.replyWithMarkdown(message);
+  }
 });
 
 // Express health check endpoint
