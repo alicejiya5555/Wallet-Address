@@ -1,46 +1,46 @@
-// 🔌 Load environment variables first
+// 🔌 Load environment variables
 require('dotenv').config();
 
-// 🌐 Tiny express server to keep host alive
+// 🌐 Express server to keep bot alive
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (_req, res) => {
-  res.send('🤖 Ethereum Wallet Monitor Bot is alive!');
+  res.send('🤖 Ethereum & ERC-20 Monitor Bot is Alive!');
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 Server is running on port ${PORT}`);
+  console.log(`🌐 Server running on port ${PORT}`);
 });
 
+// 📦 Core libraries
 const axios = require('axios');
 const { Telegraf } = require('telegraf');
-const fs = require('fs');
+const wallets = require('./wallets.json');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
 const CHECK_INTERVAL = 60 * 1000; // every 1 min
-const wallets = require('./wallets.json');
 
 let isBotActive = true;
 let lastBlocks = {};
 
-// 📐 Format token values
+// 📐 Format token/ETH value
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
-// 🏷️ Format address short
+// 🏷️ Format short address
 function shortAddress(addr) {
   if (!addr || typeof addr !== 'string') return 'N/A';
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
-// ⏱️ Time window: 5 minutes
+// ⏱️ Time window
 const ONE_MINUTE = 1 * 60;
 
-// 🔍 Main ERC-20 + ETH Transaction Checker
+// 🔍 Main Checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
@@ -52,7 +52,7 @@ async function checkTransactions() {
     const name = wallet.name;
     const fromBlock = lastBlocks[address] || 0;
 
-    // 🌐 Check ETH transfers
+    // 📥 ETH transactions
     const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
 
     try {
@@ -62,7 +62,6 @@ async function checkTransactions() {
       for (const tx of ethTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
-
         if (block <= fromBlock || txTime < timeWindow) continue;
 
         const to = tx.to?.toLowerCase();
@@ -71,12 +70,10 @@ async function checkTransactions() {
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
-
         if (!isDeposit && !isWithdrawal) continue;
 
         const value = formatAmount(tx.value, 18);
-        let alertType = '🟢 ETH Deposit';
-        if (isWithdrawal) alertType = '🔴 ETH Withdraw';
+        const alertType = isWithdrawal ? '🔴 ETH Sent' : '🟢 ETH Received';
 
         const message = `
 ${alertType}
@@ -85,18 +82,18 @@ ${alertType}
 💰 Amount: *${value} ETH*
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
-🧾 Hash: [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 Time: ${new Date(txTime * 1000).toLocaleString()}
+🧾 [View TX](https://etherscan.io/tx/${tx.hash})
+🕐 ${new Date(txTime * 1000).toLocaleString()}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
         lastBlocks[address] = block;
       }
     } catch (error) {
-      console.error('❌ Error checking ETH transfers:', error.message);
+      console.error('❌ ETH Error:', error.message);
     }
 
-    // 🧾 Check ERC-20 token transfers
+    // 💠 ERC-20 tokens
     const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
 
     try {
@@ -106,7 +103,6 @@ ${alertType}
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
-
         if (block <= fromBlock || txTime < timeWindow) continue;
 
         const to = tx.to?.toLowerCase();
@@ -115,39 +111,37 @@ ${alertType}
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
+        if (!isDeposit && !isWithdrawal) continue;
 
         const symbol = tx.tokenSymbol || 'Unknown';
         const decimals = tx.tokenDecimal ? parseInt(tx.tokenDecimal) : 18;
         const value = formatAmount(tx.value, decimals);
-
-        let alertType = '🟢 Token Deposit';
-        if (isWithdrawal) alertType = '🔴 Token Withdraw';
-        if (!isWithdrawal && !isDeposit) alertType = '🟡 Token Transfer';
+        const alertType = isWithdrawal ? `🔴 Sent ${symbol}` : `🟢 Received ${symbol}`;
 
         const message = `
-${alertType} ${symbol}
+${alertType}
 
 👤 Wallet: *${name}*
 💰 Amount: *${value} ${symbol}*
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
-🧾 Hash: [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 Time: ${new Date(txTime * 1000).toLocaleString()}
+🧾 [View TX](https://etherscan.io/tx/${tx.hash})
+🕐 ${new Date(txTime * 1000).toLocaleString()}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
         lastBlocks[address] = block;
       }
     } catch (error) {
-      console.error('❌ Error checking ERC-20 transactions:', error.message);
+      console.error('❌ Token Error:', error.message);
     }
   }
 }
 
-// ⏱️ Check on interval
+// 🔁 Run on interval
 setInterval(checkTransactions, CHECK_INTERVAL);
 
-// 🛠️ Telegram Commands
+// 🧠 Telegram commands
 bot.command('start', (ctx) => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
@@ -159,4 +153,4 @@ bot.command('stop', (ctx) => {
 });
 
 bot.launch();
-console.log('🤖 Bot started!');
+console.log('🤖 Bot started and watching wallet movements...');
