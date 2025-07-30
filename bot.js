@@ -102,6 +102,7 @@ async function checkTransactions() {
   if (!isBotActive) return;
 
   priceCache = {}; // Reset price cache on each check
+  const now = Math.floor(Date.now() / 1000); // Current Unix timestamp in seconds
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
@@ -116,7 +117,11 @@ async function checkTransactions() {
 
       for (const tx of ethTxs) {
         const block = parseInt(tx.blockNumber);
+        const txTime = parseInt(tx.timeStamp);
         if (block <= fromBlock) continue;
+
+        // Skip if transaction older than 60 seconds
+        if (now - txTime > 60) continue;
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -135,7 +140,7 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 ${new Date(tx.timeStamp * 1000).toLocaleString()}
+🕐 ${new Date(txTime * 1000).toLocaleString()}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
@@ -153,7 +158,11 @@ ${alertType}
 
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
+        const txTime = parseInt(tx.timeStamp);
         if (block <= fromBlock) continue;
+
+        // Skip if transaction older than 60 seconds
+        if (now - txTime > 60) continue;
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -175,7 +184,7 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 ${new Date(tx.timeStamp * 1000).toLocaleString()}
+🕐 ${new Date(txTime * 1000).toLocaleString()}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
