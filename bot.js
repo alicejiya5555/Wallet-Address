@@ -10,16 +10,16 @@ const PORT = process.env.PORT || 3000;
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 1000; // Check every 1 min
+const CHECK_INTERVAL = 60 * 1000; // 1 minute polling
 
 const wallets = [
   { name: 'Ivan Colombia', address: '0x857c67C421d3E94daC5aBB0EaA4d34b26722B4fB' }
 ];
 
 let isBotActive = true;
-let lastBlocks = {};
+let lastBlocks = {}; // track highest block per wallet
 
-// Format amounts
+// Format token amount
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
@@ -35,26 +35,58 @@ function updateLastBlock(address, block) {
   }
 }
 
-async function getERC20TokenBalance(address, contract, decimals) {
-  const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${contract}&address=${address}&tag=latest&apikey=${API_KEY}`;
+// Cache token prices during one check cycle to avoid many API calls
+let priceCache = {};
+
+async function getTokenPrice(symbol) {
+  if (priceCache[symbol]) return priceCache[symbol];
+  
   try {
-    const res = await axios.get(url);
-    return formatAmount(res.data.result, decimals);
-  } catch (e) {
-    return '0.000000';
+    // Map common token symbols to CoinGecko IDs
+    const coinIds = {
+      'USDT': 'tether',
+      'USDC': 'usd-coin',
+      'LINK': 'chainlink',
+      'BNB': 'binancecoin',
+      'ETH': 'ethereum'
+      // Add more if needed
+    };
+
+    const coinId = coinIds[symbol.toUpperCase()];
+    if (!coinId) return 0;
+
+    const res = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+    const price = res.data[coinId]?.usd || 0;
+    priceCache[symbol] = price;
+    return price;
+  } catch {
+    return 0;
   }
 }
 
+// Get ETH balance for a wallet
 async function getETHBalance(address) {
   const url = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
   try {
     const res = await axios.get(url);
     return formatAmount(res.data.result, 18);
-  } catch (e) {
+  } catch {
     return '0.000000';
   }
 }
 
+// Get ERC-20 token balance for a wallet
+async function getERC20TokenBalance(address, contract, decimals) {
+  const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${contract}&address=${address}&tag=latest&apikey=${API_KEY}`;
+  try {
+    const res = await axios.get(url);
+    return formatAmount(res.data.result, decimals);
+  } catch {
+    return '0.000000';
+  }
+}
+
+// List of popular token contracts you want balances for at the end
 const tokenContracts = [
   { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
   { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
@@ -62,9 +94,11 @@ const tokenContracts = [
   { symbol: 'BNB', address: '0xB8c77482e45F1F44dE1745F52C74426C631bDD52', decimals: 18 }
 ];
 
-// 🧾 Transaction Checker
+// Main function to check new transactions
 async function checkTransactions() {
   if (!isBotActive) return;
+
+  priceCache = {}; // Reset price cache on each check
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
@@ -72,14 +106,13 @@ async function checkTransactions() {
     let fromBlock = lastBlocks[address] || 0;
 
     try {
-      // ETH Transactions
+      // Fetch ETH txs from last checked block
       const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const ethRes = await axios.get(ethUrl);
       const ethTxs = ethRes.data.result || [];
 
       for (const tx of ethTxs) {
         const block = parseInt(tx.blockNumber);
-
         if (block <= fromBlock) continue;
 
         const isDeposit = tx.to?.toLowerCase() === address;
@@ -88,12 +121,14 @@ async function checkTransactions() {
 
         const value = formatAmount(tx.value, 18);
         const alertType = isWithdrawal ? '🔴 ETH Withdraw' : '🟢 ETH Deposit';
+        const price = await getTokenPrice('ETH');
+        const usdValue = (value * price).toFixed(2);
 
         const message = `
 ${alertType}
 
 👤 Wallet: *${name}*
-💰 Amount: *${value} ETH*
+💰 Amount: *${value} ETH* (~$${usdValue} USD)
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
@@ -108,14 +143,13 @@ ${alertType}
     }
 
     try {
-      // ERC-20 Token Transactions
+      // Fetch ERC20 token txs
       const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const tokenRes = await axios.get(tokenUrl);
       const tokenTxs = tokenRes.data.result || [];
 
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
-
         if (block <= fromBlock) continue;
 
         const isDeposit = tx.to?.toLowerCase() === address;
@@ -127,11 +161,14 @@ ${alertType}
         const value = formatAmount(tx.value, decimals);
         const alertType = isWithdrawal ? `🔴 Withdraw ${symbol}` : `🟢 Deposit ${symbol}`;
 
+        const price = await getTokenPrice(symbol);
+        const usdValue = (value * price).toFixed(2);
+
         const message = `
 ${alertType}
 
 👤 Wallet: *${name}*
-💰 Amount: *${value} ${symbol}*
+💰 Amount: *${value} ${symbol}* (~$${usdValue} USD)
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
@@ -145,12 +182,10 @@ ${alertType}
       console.error(`❌ Token Error [${name}]:`, err.message);
     }
 
-    // 📊 Show Total Balances
+    // At the end, show wallet balances
     try {
       const ethBalance = await getETHBalance(address);
-      let balances = `📊 *${name}'s Total Wallet Balances:* 
-
-- 🌐 ETH: *${ethBalance} ETH*`;
+      let balances = `📊 *${name}'s Total Wallet Balances:*\n\n- 🌐 ETH: *${ethBalance} ETH*`;
 
       for (const token of tokenContracts) {
         const bal = await getERC20TokenBalance(address, token.address, token.decimals);
@@ -164,21 +199,20 @@ ${alertType}
   }
 }
 
-// 🔁 Run periodically
+// Run every minute
 setInterval(checkTransactions, CHECK_INTERVAL);
 
-// Commands
+// Telegram commands to start/stop monitoring
 bot.command('start', ctx => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
 });
-
 bot.command('stop', ctx => {
   isBotActive = false;
   ctx.reply('⏸️ Bot monitoring paused.');
 });
 
-// Health Check
+// Express health check
 app.get('/', (_req, res) => {
   res.send('🤖 Wallet Monitor is Alive');
 });
