@@ -16,7 +16,7 @@ const wallets = [
   { name: 'Felix Colombia', address: '0x705A46DdB89F0B6F0c6348b4aF40192778bC0C87' },
   { name: 'Daniel', address: '0x5218177BC361DEA6fE7654C8Ac25D4f7424Aa993' },
   { name: 'Ivan', address: '0x857c67C421d3E94daC5aBB0EaA4d34b26722B4fB' },
-  { name: 'Chainlink', address: '0x20145C5e27408B5C1CF2239d0115EE3BBc27CbD7' }
+  { name: 'Chainlink', address: '' }
 ];
 
 let isBotActive = true;
