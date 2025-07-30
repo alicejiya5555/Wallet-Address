@@ -50,7 +50,7 @@ async function getTokenPrice(symbol) {
     const coinId = coinIds[symbol.toUpperCase()];
     if (!coinId) return 0;
 
-    const res = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+    const res = await axios.get(https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd);
     const price = res.data[coinId]?.usd || 0;
     priceCache[symbol] = price;
     return price;
@@ -61,7 +61,7 @@ async function getTokenPrice(symbol) {
 
 // Get ETH balance for a wallet
 async function getETHBalance(address) {
-  const url = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
+  const url = https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY};
   try {
     const res = await axios.get(url);
     return formatAmount(res.data.result, 18);
@@ -72,7 +72,7 @@ async function getETHBalance(address) {
 
 // Get ERC-20 token balance for a wallet
 async function getERC20TokenBalance(address, contract, decimals) {
-  const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${contract}&address=${address}&tag=latest&apikey=${API_KEY}`;
+  const url = https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${contract}&address=${address}&tag=latest&apikey=${API_KEY};
   try {
     const res = await axios.get(url);
     return formatAmount(res.data.result, decimals);
@@ -92,11 +92,11 @@ const tokenContracts = [
 // Compose wallet balances message for clarity
 async function composeBalancesMessage(address, name) {
   const ethBalance = await getETHBalance(address);
-  let balances = `📊 *${name}'s Total Wallet Balances:*\n\n- 🌐 ETH: *${ethBalance} ETH*`;
+  let balances = 📊 *${name}'s Total Wallet Balances:*\n\n- 🌐 ETH: *${ethBalance} ETH*;
 
   for (const token of tokenContracts) {
     const bal = await getERC20TokenBalance(address, token.address, token.decimals);
-    balances += `\n- 💠 ${token.symbol}: *${bal}*`;
+    balances += \n- 💠 ${token.symbol}: *${bal}*;
   }
 
   return balances;
@@ -105,7 +105,7 @@ async function composeBalancesMessage(address, name) {
 // Fetch latest Ethereum block number to initialize tracking
 async function getLatestBlockNumber() {
   try {
-    const url = `https://api.etherscan.io/api?module=proxy&action=eth_blockNumber&apikey=${API_KEY}`;
+    const url = https://api.etherscan.io/api?module=proxy&action=eth_blockNumber&apikey=${API_KEY};
     const res = await axios.get(url);
     if (res.data.result) {
       return parseInt(res.data.result, 16); // hex to decimal
@@ -122,7 +122,7 @@ async function initializeLastBlocks() {
   wallets.forEach(wallet => {
     lastBlocks[wallet.address.toLowerCase()] = latestBlock;
   });
-  console.log(`Initialized lastBlocks to block number: ${latestBlock}`);
+  console.log(Initialized lastBlocks to block number: ${latestBlock});
 }
 
 // Main transaction checker
@@ -141,7 +141,7 @@ async function checkTransactions() {
 
     try {
       // ETH transactions
-      const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
+      const ethUrl = https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY};
       const ethRes = await axios.get(ethUrl);
       const ethTxs = ethRes.data.result || [];
 
@@ -162,7 +162,7 @@ async function checkTransactions() {
 
         const balancesMessage = await composeBalancesMessage(address, name);
 
-        const message = `
+        const message = 
 ${alertType}
 
 👤 Wallet: *${name}*
@@ -173,19 +173,19 @@ ${alertType}
 🕐 ${new Date(txTime * 1000).toLocaleString()}
 
 ${balancesMessage}
-        `;
+        ;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
 
         if (block > maxBlockInThisCycle) maxBlockInThisCycle = block;
       }
     } catch (err) {
-      console.error(`❌ ETH Error [${name}]:`, err.message);
+      console.error(❌ ETH Error [${name}]:, err.message);
     }
 
     try {
       // ERC-20 token transactions
-      const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
+      const tokenUrl = https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY};
       const tokenRes = await axios.get(tokenUrl);
       const tokenTxs = tokenRes.data.result || [];
 
@@ -202,14 +202,14 @@ ${balancesMessage}
         const symbol = tx.tokenSymbol || 'Unknown';
         const decimals = tx.tokenDecimal ? parseInt(tx.tokenDecimal) : 18;
         const value = formatAmount(tx.value, decimals);
-        const alertType = isWithdrawal ? `🔴 Withdraw ${symbol}` : `🟢 Deposit ${symbol}`;
+        const alertType = isWithdrawal ? 🔴 Withdraw ${symbol} : 🟢 Deposit ${symbol};
 
         const price = await getTokenPrice(symbol);
         const usdValue = (value * price).toFixed(2);
 
         const balancesMessage = await composeBalancesMessage(address, name);
 
-        const message = `
+        const message = 
 ${alertType}
 
 👤 Wallet: *${name}*
@@ -220,14 +220,14 @@ ${alertType}
 🕐 ${new Date(txTime * 1000).toLocaleString()}
 
 ${balancesMessage}
-        `;
+        ;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
 
         if (block > maxBlockInThisCycle) maxBlockInThisCycle = block;
       }
     } catch (err) {
-      console.error(`❌ Token Error [${name}]:`, err.message);
+      console.error(❌ Token Error [${name}]:, err.message);
     }
 
     // Update last processed block for the wallet
@@ -259,7 +259,7 @@ app.get('/', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 Server listening on port ${PORT}`);
+  console.log(🌐 Server listening on port ${PORT});
 });
 
 // Launch the Telegram bot
