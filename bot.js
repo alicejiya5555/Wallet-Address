@@ -22,20 +22,15 @@ const wallets = [
 let isBotActive = true;
 let lastBlocks = {}; // track highest block per wallet
 
-// Format token amount
+// Format token amount gracefully
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
+// Shorten Ethereum address for elegant display
 function shortAddress(addr) {
   if (!addr || typeof addr !== 'string') return 'N/A';
   return addr.slice(0, 6) + '...' + addr.slice(-4);
-}
-
-function updateLastBlock(address, block) {
-  if (!lastBlocks[address] || block > lastBlocks[address]) {
-    lastBlocks[address] = block;
-  }
 }
 
 // Cache token prices during one check cycle to avoid many API calls
@@ -86,7 +81,7 @@ async function getERC20TokenBalance(address, contract, decimals) {
   }
 }
 
-// List of popular token contracts you want balances for at the end
+// Popular token contracts to check balances for
 const tokenContracts = [
   { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
   { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
@@ -94,7 +89,7 @@ const tokenContracts = [
   { symbol: 'BNB', address: '0xB8c77482e45F1F44dE1745F52C74426C631bDD52', decimals: 18 }
 ];
 
-// Compose wallet balances message
+// Compose wallet balances message for clarity
 async function composeBalancesMessage(address, name) {
   const ethBalance = await getETHBalance(address);
   let balances = `📊 *${name}'s Total Wallet Balances:*\n\n- 🌐 ETH: *${ethBalance} ETH*`;
@@ -107,11 +102,34 @@ async function composeBalancesMessage(address, name) {
   return balances;
 }
 
-// Main function to check new transactions
+// Fetch latest Ethereum block number to initialize tracking
+async function getLatestBlockNumber() {
+  try {
+    const url = `https://api.etherscan.io/api?module=proxy&action=eth_blockNumber&apikey=${API_KEY}`;
+    const res = await axios.get(url);
+    if (res.data.result) {
+      return parseInt(res.data.result, 16); // hex to decimal
+    }
+  } catch (e) {
+    console.error('❌ Error fetching latest block number:', e.message);
+  }
+  return 0;
+}
+
+// Initialize lastBlocks for each wallet at startup
+async function initializeLastBlocks() {
+  const latestBlock = await getLatestBlockNumber();
+  wallets.forEach(wallet => {
+    lastBlocks[wallet.address.toLowerCase()] = latestBlock;
+  });
+  console.log(`Initialized lastBlocks to block number: ${latestBlock}`);
+}
+
+// Main transaction checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
-  priceCache = {}; // Reset price cache on each check
+  priceCache = {}; // Reset price cache each cycle
   const now = Math.floor(Date.now() / 1000); // Current Unix timestamp in seconds
 
   for (const wallet of wallets) {
@@ -119,8 +137,10 @@ async function checkTransactions() {
     const name = wallet.name;
     let fromBlock = lastBlocks[address] || 0;
 
+    let maxBlockInThisCycle = fromBlock;
+
     try {
-      // Fetch ETH transactions
+      // ETH transactions
       const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const ethRes = await axios.get(ethUrl);
       const ethTxs = ethRes.data.result || [];
@@ -129,7 +149,7 @@ async function checkTransactions() {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
         if (block <= fromBlock) continue;
-        if (now - txTime > 60) continue;  // Only within last 60 seconds
+        if (now - txTime > 60) continue;  // Show only very recent tx
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -156,14 +176,15 @@ ${balancesMessage}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
-        updateLastBlock(address, block);
+
+        if (block > maxBlockInThisCycle) maxBlockInThisCycle = block;
       }
     } catch (err) {
       console.error(`❌ ETH Error [${name}]:`, err.message);
     }
 
     try {
-      // Fetch ERC20 token transactions
+      // ERC-20 token transactions
       const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const tokenRes = await axios.get(tokenUrl);
       const tokenTxs = tokenRes.data.result || [];
@@ -172,7 +193,7 @@ ${balancesMessage}
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
         if (block <= fromBlock) continue;
-        if (now - txTime > 60) continue;  // Only within last 60 seconds
+        if (now - txTime > 60) continue;  // Show only very recent tx
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -202,18 +223,27 @@ ${balancesMessage}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
-        updateLastBlock(address, block);
+
+        if (block > maxBlockInThisCycle) maxBlockInThisCycle = block;
       }
     } catch (err) {
       console.error(`❌ Token Error [${name}]:`, err.message);
     }
+
+    // Update last processed block for the wallet
+    if (maxBlockInThisCycle > fromBlock) {
+      lastBlocks[address] = maxBlockInThisCycle;
+    }
   }
 }
 
-// Run every minute
-setInterval(checkTransactions, CHECK_INTERVAL);
+// Initialize and start bot monitoring
+initializeLastBlocks().then(() => {
+  setInterval(checkTransactions, CHECK_INTERVAL);
+  console.log('⏳ Transaction monitoring started...');
+});
 
-// Telegram commands to start/stop monitoring
+// Telegram commands to control the bot
 bot.command('start', ctx => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
@@ -223,7 +253,7 @@ bot.command('stop', ctx => {
   ctx.reply('⏸️ Bot monitoring paused.');
 });
 
-// Express health check
+// Express health check endpoint
 app.get('/', (_req, res) => {
   res.send('🤖 Wallet Monitor is Alive');
 });
@@ -232,7 +262,7 @@ app.listen(PORT, () => {
   console.log(`🌐 Server listening on port ${PORT}`);
 });
 
-// Start bot
+// Launch the Telegram bot
 bot.launch({ dropPendingUpdates: true })
   .then(() => console.log('🤖 Bot started via polling.'))
   .catch(err => console.error('🚨 Launch error:', err.message));
