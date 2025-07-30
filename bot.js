@@ -13,7 +13,7 @@ const API_KEY = process.env.ETHERSCAN_API;
 const CHECK_INTERVAL = 60 * 1000; // 1 minute polling
 
 const wallets = [
-  { name: 'Ivan Colombia', address: '0x857c67C421d3E94daC5aBB0EaA4d34b26722B4fB' }
+  { name: 'Ivan Colombia', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' }
 ];
 
 let isBotActive = true;
