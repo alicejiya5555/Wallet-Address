@@ -133,6 +133,7 @@ async function checkTransactions() {
 
   priceCache = {}; // reset price cache each cycle
   const now = Math.floor(Date.now() / 1000);
+  const oneHourAgo = now - 3600;
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
@@ -149,7 +150,10 @@ async function checkTransactions() {
 
       for (const tx of ethTxs) {
         const block = parseInt(tx.blockNumber);
+        const txTime = parseInt(tx.timeStamp);
+
         if (block <= fromBlock) continue;
+        if (txTime < oneHourAgo) continue; // Skip transactions older than 1 hour
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
@@ -190,7 +194,10 @@ ${balancesMessage}
 
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
+        const txTime = parseInt(tx.timeStamp);
+
         if (block <= fromBlock) continue;
+        if (txTime < oneHourAgo) continue; // Skip transactions older than 1 hour
 
         const isDeposit = tx.to?.toLowerCase() === address;
         const isWithdrawal = tx.from?.toLowerCase() === address;
