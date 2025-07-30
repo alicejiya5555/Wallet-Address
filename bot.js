@@ -1,18 +1,10 @@
 // 🔌 Load environment variables
 require('dotenv').config();
 
-// 🌐 Express server to keep bot alive
+// 🌐 Express server to keep bot alive and receive webhook
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-app.get('/', (_req, res) => {
-  res.send('🤖 Ethereum & ERC-20 Monitor Bot is Alive!');
-});
-
-app.listen(PORT, () => {
-  console.log(`🌐 Server running on port ${PORT}`);
-});
 
 // 📦 Core libraries
 const axios = require('axios');
@@ -21,24 +13,25 @@ const wallets = require('./wallets.json');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 60 * 1000; // ⏱️ Every 1 hour
-const TIME_WINDOW = 60 * 60; // ⏳ Scan last 1 hour
+
+const CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour
+const TIME_WINDOW = 60 * 60; // last 1 hour in seconds
 
 let isBotActive = true;
 let lastBlocks = {};
 
-// 📐 Format token/ETH value
+// Format token or ETH amount
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
-// 🏷️ Format short address
+// Format short address
 function shortAddress(addr) {
   if (!addr || typeof addr !== 'string') return 'N/A';
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
-// 🔍 Main Checker
+// Main transaction checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
@@ -50,26 +43,28 @@ async function checkTransactions() {
     const name = wallet.name;
     const fromBlock = lastBlocks[address] || 0;
 
-    console.log(`🔍 Checking ${name}: ${address}`);
+    console.log(`🔍 Checking transactions for ${name}: ${address}`);
 
-    // 📥 ETH transactions
-    const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
-
+    // ETH transactions
     try {
+      const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const ethRes = await axios.get(ethUrl);
       const ethTxs = ethRes.data.result;
 
       for (const tx of ethTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
+
         if (block <= fromBlock || txTime < timeWindow) continue;
 
         const to = tx.to?.toLowerCase();
         const from = tx.from?.toLowerCase();
+
         if (!to || !from) continue;
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
+
         if (!isDeposit && !isWithdrawal) continue;
 
         const value = formatAmount(tx.value, 18);
@@ -93,24 +88,26 @@ ${alertType}
       console.error('❌ ETH Error:', error.message);
     }
 
-    // 💠 ERC-20 tokens
-    const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
-
+    // ERC-20 token transactions
     try {
+      const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const tokenRes = await axios.get(tokenUrl);
       const tokenTxs = tokenRes.data.result;
 
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
+
         if (block <= fromBlock || txTime < timeWindow) continue;
 
         const to = tx.to?.toLowerCase();
         const from = tx.from?.toLowerCase();
+
         if (!to || !from) continue;
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
+
         if (!isDeposit && !isWithdrawal) continue;
 
         const symbol = tx.tokenSymbol || 'Unknown';
@@ -138,19 +135,30 @@ ${alertType}
   }
 }
 
-// 🔁 Run on interval
+// Start periodic transaction checking
 setInterval(checkTransactions, CHECK_INTERVAL);
 
-// 🧠 Telegram commands
-bot.command('start', (ctx) => {
-  isBotActive = true;
-  ctx.reply('✅ Bot monitoring resumed.');
+// Express route for health check
+app.get('/', (_req, res) => {
+  res.send('🤖 Ethereum & ERC-20 Monitor Bot is Alive!');
 });
 
-bot.command('stop', (ctx) => {
-  isBotActive = false;
-  ctx.reply('⏸️ Bot monitoring paused.');
+// Webhook path
+const webhookPath = `/bot${process.env.BOT_TOKEN}`;
+app.use(bot.webhookCallback(webhookPath));
+
+// Start Express server
+app.listen(PORT, () => {
+  console.log(`🌐 Server listening on port ${PORT}`);
+  console.log(`🌐 Webhook path: ${webhookPath}`);
 });
 
-bot.launch();
-console.log('🤖 Bot started and watching wallet movements every hour...');
+// Start bot without polling (webhook mode)
+(async () => {
+  try {
+    // Remove polling, just start bot
+    console.log('🤖 Bot webhook mode enabled, ready to receive updates.');
+  } catch (error) {
+    console.error('❌ Bot launch error:', error);
+  }
+})();
