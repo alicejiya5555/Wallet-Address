@@ -1,4 +1,4 @@
-// 🔌 Load env variables
+// 🔌 Load environment variables
 require('dotenv').config();
 
 const axios = require('axios');
@@ -10,8 +10,8 @@ const PORT = process.env.PORT || 3000;
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 1000; // 1 minute
-const TIME_WINDOW = 60; // 1 minute in seconds
+const CHECK_INTERVAL = 60 * 1000; // 1 minute polling
+const TIME_WINDOW = 60 * 60; // 1 hour in seconds
 
 const wallets = [
   { name: 'Check Tether', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' },
@@ -24,15 +24,25 @@ const wallets = [
 let isBotActive = true;
 let lastBlocks = {};
 
+// Format amount with decimals
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
+// Shorten wallet address
 function shortAddress(addr) {
   if (!addr || typeof addr !== 'string') return 'N/A';
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
+// Helper to update lastBlocks with highest block seen
+function updateLastBlock(address, block) {
+  if (!lastBlocks[address] || block > lastBlocks[address]) {
+    lastBlocks[address] = block;
+  }
+}
+
+// Main transaction checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
@@ -42,26 +52,42 @@ async function checkTransactions() {
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
     const name = wallet.name;
-    const fromBlock = lastBlocks[address] || 0;
+    let fromBlock = lastBlocks[address] || 0;
+
+    console.log(`\n🔎 Checking transactions for "${name}" from block ${fromBlock}`);
 
     try {
-      // ETH txs
-      const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
+      // Fetch latest ETH transactions
+      const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const ethRes = await axios.get(ethUrl);
       const ethTxs = ethRes.data.result || [];
+
+      console.log(`🔸 Found ${ethTxs.length} ETH tx(s) for ${name}`);
 
       for (const tx of ethTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
 
-        if (block <= fromBlock || txTime < timeWindow) continue;
+        if (block <= fromBlock) {
+          // Old block, skip
+          continue;
+        }
+
+        if (txTime < timeWindow) {
+          // Older than 1 hour, skip
+          continue;
+        }
 
         const to = tx.to?.toLowerCase();
         const from = tx.from?.toLowerCase();
-        if (!to || !from) continue;
+        if (!to || !from) {
+          console.log(`⚠️ Skipping ETH tx ${tx.hash} due to missing to/from`);
+          continue;
+        }
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
+
         if (!isDeposit && !isWithdrawal) continue;
 
         const value = formatAmount(tx.value, 18);
@@ -79,30 +105,42 @@ ${alertType}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
-        lastBlocks[address] = block;
+        updateLastBlock(address, block);
       }
-    } catch (err) {
-      console.error('❌ ETH Error:', err.message);
+    } catch (error) {
+      console.error(`❌ ETH Error for ${name}:`, error.message);
     }
 
     try {
-      // ERC-20 txs
-      const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
+      // Fetch ERC-20 token transactions
+      const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock + 1}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
       const tokenRes = await axios.get(tokenUrl);
       const tokenTxs = tokenRes.data.result || [];
+
+      console.log(`🔹 Found ${tokenTxs.length} ERC-20 tx(s) for ${name}`);
 
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
 
-        if (block <= fromBlock || txTime < timeWindow) continue;
+        if (block <= fromBlock) {
+          continue;
+        }
+
+        if (txTime < timeWindow) {
+          continue;
+        }
 
         const to = tx.to?.toLowerCase();
         const from = tx.from?.toLowerCase();
-        if (!to || !from) continue;
+        if (!to || !from) {
+          console.log(`⚠️ Skipping token tx ${tx.hash} due to missing to/from`);
+          continue;
+        }
 
         const isDeposit = to === address;
         const isWithdrawal = from === address;
+
         if (!isDeposit && !isWithdrawal) continue;
 
         const symbol = tx.tokenSymbol || 'Unknown';
@@ -123,10 +161,10 @@ ${alertType}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
-        lastBlocks[address] = block;
+        updateLastBlock(address, block);
       }
-    } catch (err) {
-      console.error('❌ Token Error:', err.message);
+    } catch (error) {
+      console.error(`❌ Token Error for ${name}:`, error.message);
     }
   }
 }
@@ -152,9 +190,9 @@ app.listen(PORT, () => {
   console.log(`🌐 Server running on port ${PORT}`);
 });
 
-// Start polling
+// Launch bot with polling
 bot.launch();
 console.log('🤖 Bot started with polling... watching transactions...');
 
-// Start interval checking
+// Check transactions every minute
 setInterval(checkTransactions, CHECK_INTERVAL);
