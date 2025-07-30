@@ -106,8 +106,8 @@ ${alertType}
         // ⏳ Skip if older than 5 mins
         if (block <= fromBlock || txTime < timeWindow) continue;
 
-        const isDeposit = tx.to.toLowerCase() === address;
-        const isWithdrawal = tx.from.toLowerCase() === address;
+        const isDeposit = tx.to?.toLowerCase() === address;
+        const isWithdrawal = tx.from?.toLowerCase() === address;
 
         const symbol = tx.tokenSymbol || 'Unknown';
         const decimals = tx.tokenDecimal ? parseInt(tx.tokenDecimal) : 18;
