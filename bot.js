@@ -39,7 +39,7 @@ function shortAddress(addr) {
 // ⏱️ Time window: 5 minutes
 const ONE_MINUTE = 1 * 60;
 
-// 🔍 Main ERC-20 Transaction Checker
+// 🔍 Main ERC-20 + ETH Transaction Checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
@@ -51,6 +51,48 @@ async function checkTransactions() {
     const name = wallet.name;
     const fromBlock = lastBlocks[address] || 0;
 
+    // 🌐 Check ETH transfers
+    const ethUrl = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
+
+    try {
+      const ethRes = await axios.get(ethUrl);
+      const ethTxs = ethRes.data.result;
+
+      for (const tx of ethTxs) {
+        const block = parseInt(tx.blockNumber);
+        const txTime = parseInt(tx.timeStamp);
+
+        // ⏳ Skip if older than 5 mins
+        if (block <= fromBlock || txTime < timeWindow) continue;
+
+        const isDeposit = tx.to?.toLowerCase() === address;
+        const isWithdrawal = tx.from?.toLowerCase() === address;
+
+        if (!isDeposit && !isWithdrawal) continue;
+
+        const value = formatAmount(tx.value, 18);
+        let alertType = '🟢 ETH Deposit';
+        if (isWithdrawal) alertType = '🔴 ETH Withdraw';
+
+        const message = `
+${alertType}
+
+👤 Wallet: *${name}*
+💰 Amount: *${value} ETH*
+📤 From: ${shortAddress(tx.from)}
+📥 To: ${shortAddress(tx.to)}
+🧾 Hash: [View TX](https://etherscan.io/tx/${tx.hash})
+🕐 Time: ${new Date(txTime * 1000).toLocaleString()}
+        `;
+
+        await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
+        lastBlocks[address] = block;
+      }
+    } catch (error) {
+      console.error('❌ Error checking ETH transfers:', error.message);
+    }
+
+    // 🧾 Check ERC-20 token transfers
     const tokenUrl = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&startblock=${fromBlock}&endblock=99999999&sort=asc&apikey=${API_KEY}`;
 
     try {
@@ -66,12 +108,14 @@ async function checkTransactions() {
 
         const isDeposit = tx.to.toLowerCase() === address;
         const isWithdrawal = tx.from.toLowerCase() === address;
-        const symbol = tx.tokenSymbol || 'Unknown';
-        const value = formatAmount(tx.value, tx.tokenDecimal || 18);
 
-        let alertType = '🟢 Deposit';
-        if (isWithdrawal) alertType = '🔴 Withdraw';
-        if (!isWithdrawal && !isDeposit) alertType = '🟡 Transfer';
+        const symbol = tx.tokenSymbol || 'Unknown';
+        const decimals = tx.tokenDecimal ? parseInt(tx.tokenDecimal) : 18;
+        const value = formatAmount(tx.value, decimals);
+
+        let alertType = '🟢 Token Deposit';
+        if (isWithdrawal) alertType = '🔴 Token Withdraw';
+        if (!isWithdrawal && !isDeposit) alertType = '🟡 Token Transfer';
 
         const message = `
 ${alertType} ${symbol}
@@ -88,7 +132,7 @@ ${alertType} ${symbol}
         lastBlocks[address] = block;
       }
     } catch (error) {
-      console.error('❌ Error checking transactions:', error.message);
+      console.error('❌ Error checking ERC-20 transactions:', error.message);
     }
   }
 }
