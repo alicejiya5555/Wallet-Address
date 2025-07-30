@@ -1,3 +1,19 @@
+// 🔌 Load environment variables first
+require('dotenv').config();
+
+// 🌐 Setup tiny express server to keep host services alive
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (_req, res) => {
+  res.send('🤖 Ethereum Wallet Monitor Bot is alive!');
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Server is running on port ${PORT}`);
+});
+
 require('dotenv').config();
 const axios = require('axios');
 const { Telegraf } = require('telegraf');
