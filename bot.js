@@ -14,21 +14,13 @@ const CHECK_INTERVAL = 60 * 1000; // Check every 1 min
 const TIME_WINDOW = 60 * 60; // 1 hour
 
 const wallets = [
-  { name: 'Own ERC', address: '0xbDCcF65a7b2a4b19601d097457c329064C1f5704' },
-  { name: 'Ivan Colombia', address: '0x857c67C421d3E94daC5aBB0EaA4d34b26722B4fB' },
-  { name: 'ChainLink-2', address: '0x20145C5e27408B5C1CF2239d0115EE3BBc27CbD7' }
-];
-
-const trackedTokens = [
-  { symbol: 'USDT', contract: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
-  { symbol: 'USDC', contract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
-  { symbol: 'LINK', contract: '0x514910771AF9Ca656af840dff83E8264EcF986CA', decimals: 18 },
-  { symbol: 'BNB', contract: '0xB8c77482e45F1F44dE1745F52C74426C631bDD52', decimals: 18 }
+  { name: 'Ivan Colombia', address: '0x857c67C421d3E94daC5aBB0EaA4d34b26722B4fB' }
 ];
 
 let isBotActive = true;
 let lastBlocks = {};
 
+// Format amounts
 function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
@@ -44,29 +36,34 @@ function updateLastBlock(address, block) {
   }
 }
 
-async function fetchTokenBalance(address) {
-  let summary = [];
+async function getERC20TokenBalance(address, contract, decimals) {
+  const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${contract}&address=${address}&tag=latest&apikey=${API_KEY}`;
   try {
-    for (const token of trackedTokens) {
-      const url = `https://api.etherscan.io/api?module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest&apikey=${API_KEY}`;
-      const res = await axios.get(url);
-      const balance = res.data.result;
-      if (balance && balance !== '0') {
-        const formatted = formatAmount(balance, token.decimals);
-        summary.push(`- ${token.symbol}: ${formatted}`);
-      }
-    }
-    // Fetch ETH Balance
-    const ethUrl = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
-    const ethRes = await axios.get(ethUrl);
-    const ethBal = ethRes.data.result;
-    summary.unshift(`- ETH: ${formatAmount(ethBal, 18)}`);
-  } catch (err) {
-    console.error('⚠️ Error fetching balances:', err.message);
+    const res = await axios.get(url);
+    return formatAmount(res.data.result, decimals);
+  } catch (e) {
+    return '0.000000';
   }
-  return summary.length > 0 ? `\n📊 *Total Balance Summary:*\n${summary.join('\n')}` : '';
 }
 
+async function getETHBalance(address) {
+  const url = `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
+  try {
+    const res = await axios.get(url);
+    return formatAmount(res.data.result, 18);
+  } catch (e) {
+    return '0.000000';
+  }
+}
+
+const tokenContracts = [
+  { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
+  { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+  { symbol: 'LINK', address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', decimals: 18 },
+  { symbol: 'BNB', address: '0xB8c77482e45F1F44dE1745F52C74426C631bDD52', decimals: 18 }
+];
+
+// 🧾 Transaction Checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
@@ -95,8 +92,6 @@ async function checkTransactions() {
         const value = formatAmount(tx.value, 18);
         const alertType = isWithdrawal ? '🔴 ETH Withdraw' : '🟢 ETH Deposit';
 
-        const balanceSummary = await fetchTokenBalance(address);
-
         const message = `
 ${alertType}
 
@@ -105,7 +100,8 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 ${new Date(txTime * 1000).toLocaleString()}${balanceSummary}`;
+🕐 ${new Date(txTime * 1000).toLocaleString()}
+        `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
         updateLastBlock(address, block);
@@ -133,8 +129,6 @@ ${alertType}
         const value = formatAmount(tx.value, decimals);
         const alertType = isWithdrawal ? `🔴 Withdraw ${symbol}` : `🟢 Deposit ${symbol}`;
 
-        const balanceSummary = await fetchTokenBalance(address);
-
         const message = `
 ${alertType}
 
@@ -143,7 +137,8 @@ ${alertType}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 ${new Date(txTime * 1000).toLocaleString()}${balanceSummary}`;
+🕐 ${new Date(txTime * 1000).toLocaleString()}
+        `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
         updateLastBlock(address, block);
@@ -151,10 +146,29 @@ ${alertType}
     } catch (err) {
       console.error(`❌ Token Error [${name}]:`, err.message);
     }
+
+    // 📊 Show Total Balances
+    try {
+      const ethBalance = await getETHBalance(address);
+      let balances = `📊 *${name}'s Total Wallet Balances:*
+
+- 🌐 ETH: *${ethBalance} ETH*`;
+
+      for (const token of tokenContracts) {
+        const bal = await getERC20TokenBalance(address, token.address, token.decimals);
+        balances += `\n- 💠 ${token.symbol}: *${bal}*`;
+      }
+
+      await bot.telegram.sendMessage(process.env.CHAT_ID, balances, { parse_mode: 'Markdown' });
+    } catch (e) {
+      console.error(`❌ Balance Fetch Error [${name}]:`, e.message);
+    }
   }
 }
 
-// Telegram Commands
+// 🔁 Run periodically
+setInterval(checkTransactions, CHECK_INTERVAL);
+
 bot.command('start', ctx => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
@@ -166,15 +180,13 @@ bot.command('stop', ctx => {
 });
 
 app.get('/', (_req, res) => {
-  res.send('🤖 Ethereum Wallet Monitor Bot is alive!');
+  res.send('🤖 Wallet Monitor is Alive');
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 Server running on port ${PORT}`);
+  console.log(`🌐 Server listening on port ${PORT}`);
 });
 
 bot.launch({ dropPendingUpdates: true })
-  .then(() => console.log('🤖 Bot started via polling. Monitoring transactions...'))
-  .catch(err => console.error('🚨 Failed to launch bot:', err.message));
-
-setInterval(checkTransactions, CHECK_INTERVAL);
+  .then(() => console.log('🤖 Bot started via polling.'))
+  .catch(err => console.error('🚨 Launch error:', err.message));
