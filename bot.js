@@ -1,7 +1,7 @@
 // 🔌 Load environment variables first
 require('dotenv').config();
 
-// 🌐 Setup tiny express server to keep host services alive
+// 🌐 Tiny express server to keep host alive
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,7 +20,7 @@ const fs = require('fs');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.ETHERSCAN_API;
-const CHECK_INTERVAL = 60 * 1000;
+const CHECK_INTERVAL = 60 * 1000; // every 1 min
 const wallets = require('./wallets.json');
 
 let isBotActive = true;
@@ -31,17 +31,20 @@ function formatAmount(value, decimals = 18) {
   return (Number(value) / 10 ** decimals).toFixed(6);
 }
 
-// 🏷️ Format short wallet address
+// 🏷️ Format address short
 function shortAddress(addr) {
   return addr.substring(0, 6) + '...' + addr.slice(-4);
 }
 
-// 🔍 Check ERC-20 transactions from last 24 hours
+// ⏱️ Time window: 5 minutes
+const FIVE_MINUTES = 5 * 60;
+
+// 🔍 Main ERC-20 Transaction Checker
 async function checkTransactions() {
   if (!isBotActive) return;
 
   const now = Math.floor(Date.now() / 1000);
-  const oneDayAgo = now - 86400;
+  const timeWindow = now - FIVE_MINUTES;
 
   for (const wallet of wallets) {
     const address = wallet.address.toLowerCase();
@@ -57,7 +60,9 @@ async function checkTransactions() {
       for (const tx of tokenTxs) {
         const block = parseInt(tx.blockNumber);
         const txTime = parseInt(tx.timeStamp);
-        if (block <= fromBlock || txTime < oneDayAgo) continue;
+
+        // ⏳ Skip if older than 5 mins
+        if (block <= fromBlock || txTime < timeWindow) continue;
 
         const isDeposit = tx.to.toLowerCase() === address;
         const isWithdrawal = tx.from.toLowerCase() === address;
@@ -76,22 +81,22 @@ ${alertType} ${symbol}
 📤 From: ${shortAddress(tx.from)}
 📥 To: ${shortAddress(tx.to)}
 🧾 Hash: [View TX](https://etherscan.io/tx/${tx.hash})
-🕐 Time: ${new Date(tx.timeStamp * 1000).toLocaleString()}
+🕐 Time: ${new Date(txTime * 1000).toLocaleString()}
         `;
 
         await bot.telegram.sendMessage(process.env.CHAT_ID, message, { parse_mode: 'Markdown' });
         lastBlocks[address] = block;
       }
     } catch (error) {
-      console.error('❌ Failed to fetch token transactions:', error.message);
+      console.error('❌ Error checking transactions:', error.message);
     }
   }
 }
 
-// ⏱️ Run every X seconds
+// ⏱️ Check on interval
 setInterval(checkTransactions, CHECK_INTERVAL);
 
-// 🛠️ Bot commands
+// 🛠️ Telegram Commands
 bot.command('start', (ctx) => {
   isBotActive = true;
   ctx.reply('✅ Bot monitoring resumed.');
